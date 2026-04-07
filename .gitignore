@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# DeDRM plugin files (downloaded automatically on first run)
+dedrm/adobekey.py
+dedrm/ineptepub.py
+dedrm/ineptpdf.py
+dedrm/utilities.py
+dedrm/argv_utils.py
+dedrm/zeroedzipinfo.py
+
+# Generated assets
+icon.png
+icon.icns
+icon.iconset/
+
+# macOS
+.DS_Store
+error.log
+
+# App bundle binary artifacts
+KindleConverter.app/Contents/Resources/
