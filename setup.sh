@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEDRM_DIR="$SCRIPT_DIR/dedrm"
 GITHUB_BASE="https://raw.githubusercontent.com/noDRM/DeDRM_tools/master/DeDRM_plugin"
 
-echo "=== ADE DRM Stripper - First-Time Setup ==="
+echo "=== Kindle Converter - First-Time Setup ==="
 echo ""
 
 # Check Python 3
