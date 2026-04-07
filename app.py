@@ -169,19 +169,34 @@ def send_file_to_kindle(fpath, target_email):
     elif IS_WIN:
         return _send_via_mapi(fpath, target_email)
     else:
-        return _send_via_mail_app(fpath, target_email)  # Linux: try AppleScript equivalent
+        return _send_via_xdg(fpath, target_email)
+
+def _send_via_xdg(fpath, target_email):
+    """Linux: open default mail client via xdg-email with attachment."""
+    fname = os.path.basename(fpath)
+    r = subprocess.run(
+        ["xdg-email",
+         "--subject", fname,
+         "--attach", fpath,
+         f"mailto:{target_email}"],
+        capture_output=True)
+    return r.returncode == 0
 
 def _send_via_mail_app(fpath, target_email):
-    fname  = os.path.basename(fpath)
+    # Escape backslashes first, then quotes, so filenames like
+    # My "Book".epub don't break the AppleScript string literals.
+    def _esc(s):
+        return s.replace("\\", "\\\\").replace('"', '\\"')
+
     script = f'''
 tell application "Mail"
     set msg to make new outgoing message with properties {{¬
-        subject:"{fname}", content:"", visible:true}}
+        subject:"{_esc(os.path.basename(fpath))}", content:"", visible:true}}
     tell msg
         make new to recipient at end of to recipients ¬
-            with properties {{address:"{target_email}"}}
+            with properties {{address:"{_esc(target_email)}"}}
         make new attachment with properties ¬
-            {{file name:POSIX file "{fpath}"}} at after last paragraph
+            {{file name:POSIX file "{_esc(fpath)}"}} at after last paragraph
     end tell
     activate
 end tell
@@ -805,7 +820,8 @@ class ConverterApp(_BaseApp):
 
         key        = keys[0]
         output_dir = os.path.expanduser("~/Desktop")
-        converted  = []
+        converted  = []   # decrypted output files (written to Desktop)
+        drm_free   = []   # originals that had no DRM (result == 1)
 
         for inpath in files:
             self._set_status(f"Removing DRM…  {os.path.basename(inpath)}", "working")
@@ -820,29 +836,34 @@ class ConverterApp(_BaseApp):
                 return
             if result == 0:
                 converted.append(outpath)
-            elif result != 1:
+            elif result == 1:
+                drm_free.append(inpath)   # already DRM-free — send the original
+            else:
                 self._set_status("Decryption failed — wrong ADE account?", "error")
                 self._busy = False
                 return
 
-        if not converted:
-            converted = files
+        to_send = converted + drm_free
 
         self._set_status("Sending to Kindle…", "working")
-        target    = load_settings()["kindle_email"]
-        all_sent  = all(send_file_to_kindle(f, target) for f in converted)
+        target = load_settings().get("kindle_email", "")
+        if not target:
+            self._set_status("No Kindle email set — open Settings", "error")
+            self._busy = False
+            return
+        all_sent = all(send_file_to_kindle(f, target) for f in to_send)
 
         if all_sent:
             if self._pending_expiry:
                 expiry_str, title = self._pending_expiry
                 add_loan(title, expiry_str, converted[0] if converted else "")
                 self._pending_expiry = None
-                n = len(converted)
+                n = len(to_send)
                 self._set_status(
                     f"✓  {'Book' if n == 1 else f'{n} books'} sent"
                     f" — loan expires {expiry_str[:10]}", "ok")
             else:
-                n = len(converted)
+                n = len(to_send)
                 self._set_status(
                     f"✓  {'Book' if n == 1 else f'{n} books'} sent to Kindle!", "ok")
         else:

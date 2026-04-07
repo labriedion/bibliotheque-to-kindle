@@ -32,7 +32,7 @@ touch "$DEDRM_DIR/__init__.py"
 
 # Download DeDRM source files from noDRM/DeDRM_tools
 echo "Downloading DeDRM tools from GitHub..."
-FILES="adobekey.py ineptepub.py utilities.py argv_utils.py zeroedzipinfo.py"
+FILES="adobekey.py ineptepub.py ineptpdf.py utilities.py argv_utils.py zeroedzipinfo.py"
 for f in $FILES; do
     echo "  Downloading $f ..."
     curl -fsSL "$GITHUB_BASE/$f" -o "$DEDRM_DIR/$f"
