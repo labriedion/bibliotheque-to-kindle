@@ -4,9 +4,11 @@ import json
 import subprocess
 import threading
 import shutil
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 
 # ── Path setup ────────────────────────────────────────────────────────────────
-APP_DIR  = os.path.dirname(os.path.abspath(__file__))
+APP_DIR   = os.path.dirname(os.path.abspath(__file__))
 DEDRM_DIR = os.path.join(APP_DIR, "dedrm")
 sys.path.insert(0, DEDRM_DIR)
 sys.path.insert(0, APP_DIR)
@@ -17,6 +19,7 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox
 # ── Settings ──────────────────────────────────────────────────────────────────
 SETTINGS_DIR  = os.path.expanduser("~/Library/Application Support/KindleConverter")
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
+LOANS_FILE    = os.path.join(SETTINGS_DIR, "loans.json")
 
 def load_settings():
     try:
@@ -29,6 +32,80 @@ def save_settings(data):
     os.makedirs(SETTINGS_DIR, exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+# ── Loan tracking ─────────────────────────────────────────────────────────────
+
+def load_loans():
+    try:
+        with open(LOANS_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+def save_loans(loans):
+    os.makedirs(SETTINGS_DIR, exist_ok=True)
+    with open(LOANS_FILE, "w") as f:
+        json.dump(loans, f, indent=2)
+
+def expired_loans():
+    """Return loans that have passed their expiry date and aren't confirmed deleted."""
+    now = datetime.now(timezone.utc)
+    result = []
+    for loan in load_loans():
+        if loan.get("confirmed_deleted"):
+            continue
+        expiry_str = loan.get("expiry")
+        if not expiry_str:
+            continue
+        try:
+            expiry = datetime.fromisoformat(expiry_str)
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            if expiry < now:
+                result.append(loan)
+        except ValueError:
+            pass
+    return result
+
+def confirm_loans_deleted(loans_to_confirm):
+    """Mark a list of loans as confirmed deleted."""
+    all_loans = load_loans()
+    titles = {l["title"] for l in loans_to_confirm}
+    for loan in all_loans:
+        if loan.get("title") in titles:
+            loan["confirmed_deleted"] = True
+    save_loans(all_loans)
+
+def add_loan(title, expiry_str, local_path):
+    loans = load_loans()
+    loans.append({
+        "title": title,
+        "expiry": expiry_str,
+        "local_path": local_path,
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "confirmed_deleted": False,
+    })
+    save_loans(loans)
+
+def _parse_acsm(path):
+    """Return (expiry_iso_str, is_loan) from an ACSM file, or (None, False)."""
+    try:
+        tree = ET.parse(path)
+        root = tree.getroot()
+        # ACSM files use the Adobe ADEPT namespace
+        ns = "http://ns.adobe.com/adept"
+        is_loan = root.get("fulfillmentType") == "loan"
+        expiry = root.find(f"{{{ns}}}expiry")
+        if expiry is None:
+            expiry = root.find("expiry")  # fallback without namespace
+        return (expiry.text if expiry is not None else None), is_loan
+    except Exception:
+        return None, False
+
+def _kindle_library_url():
+    domain = load_settings().get("amazon_domain", "amazon.com")
+    return f"https://www.{domain}/hz/mycd/myx#/home/content/pdocs/dateDsc/"
+
 
 # ── First-run detection ───────────────────────────────────────────────────────
 DEDRM_FILES = [
@@ -63,34 +140,28 @@ def _generate_icon():
     try:
         from PIL import Image, ImageDraw
     except ImportError:
-        return  # Pillow not yet installed — skip silently
+        return
 
     S = 1024
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    # Warm orange rounded background
     d.rounded_rectangle([0, 0, S - 1, S - 1], radius=224, fill="#E8682A")
 
-    # Book dimensions
-    bx, by  = int(S * 0.20), int(S * 0.17)
-    bw, bh  = int(S * 0.60), int(S * 0.66)
-    mid     = bx + bw // 2
-    bend    = bx + bw
+    bx, by = int(S * 0.20), int(S * 0.17)
+    bw, bh = int(S * 0.60), int(S * 0.66)
+    mid    = bx + bw // 2
+    bend   = bx + bw
 
-    # Left page (white) and right page (cream)
-    d.rectangle([bx,    by, mid - 10, by + bh], fill="#FFFFFF")
-    d.rectangle([mid + 10, by, bend, by + bh],  fill="#F0EDE8")
-    # Spine
+    d.rectangle([bx,      by, mid - 10, by + bh], fill="#FFFFFF")
+    d.rectangle([mid + 10, by, bend,    by + bh], fill="#F0EDE8")
     d.rectangle([mid - 10, by, mid + 10, by + bh], fill="#B04A10")
 
-    # Page lines
     for i in range(6):
         y = by + 70 + i * 85
-        d.line([(bx + 45, y), (mid - 45, y)],   fill="#CCCCCC", width=9)
-        d.line([(mid + 45, y), (bend - 45, y)],  fill="#BBBBBB", width=9)
+        d.line([(bx + 45, y), (mid - 45, y)],  fill="#CCCCCC", width=9)
+        d.line([(mid + 45, y), (bend - 45, y)], fill="#BBBBBB", width=9)
 
-    # Bottom shadow strip
     d.rectangle([bx, by + bh - 28, bend, by + bh], fill="#D0C8C0")
 
     png_path    = os.path.join(APP_DIR, "icon.png")
@@ -99,7 +170,6 @@ def _generate_icon():
 
     img.save(png_path)
 
-    # Build iconset with required sizes
     os.makedirs(iconset_dir, exist_ok=True)
     for sz, tag in [
         (16,  "16x16"), (32, "16x16@2x"),
@@ -114,18 +184,14 @@ def _generate_icon():
             capture_output=True,
         )
 
-    subprocess.run(
-        ["iconutil", "-c", "icns", iconset_dir, "-o", icns_path],
-        capture_output=True,
-    )
+    subprocess.run(["iconutil", "-c", "icns", iconset_dir, "-o", icns_path],
+                   capture_output=True)
 
-    # Install into the .app bundle that sits next to app.py
     bundle_res = os.path.join(APP_DIR, "KindleConverter.app", "Contents", "Resources")
     if os.path.isdir(os.path.dirname(bundle_res)):
         os.makedirs(bundle_res, exist_ok=True)
         shutil.copy2(icns_path, os.path.join(bundle_res, "AppIcon.icns"))
 
-    # Clean up temporary iconset folder
     shutil.rmtree(iconset_dir, ignore_errors=True)
 
 
@@ -241,29 +307,65 @@ class SettingsDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="Kindle Settings", font=("Helvetica", 13, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        # ── Kindle ──
+        ttk.Label(frame, text="Kindle", font=("Helvetica", 13, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
-        ttk.Label(frame, text="Kindle email:").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Send-to-Kindle email:").grid(
+            row=1, column=0, sticky="w", pady=4)
         self._email_var = tk.StringVar(value=self._settings.get("kindle_email", ""))
         ttk.Entry(frame, textvariable=self._email_var, width=36).grid(
             row=1, column=1, padx=(8, 0), pady=4)
 
-        ttk.Label(frame, text="Kids library email\n(optional):",
-                  justify="left").grid(row=2, column=0, sticky="w", pady=4)
-        self._kids_var = tk.StringVar(value=self._settings.get("kindle_kids_email", ""))
-        ttk.Entry(frame, textvariable=self._kids_var, width=36).grid(
-            row=2, column=1, padx=(8, 0), pady=4)
-
         ttk.Label(frame,
-                  text="Find your address at amazon.com → Manage Your Content\nand Devices → Preferences → Personal Document Settings",
+                  text="Find yours: Amazon → Manage Your Content\n"
+                       "and Devices → Preferences → Personal Document Settings",
                   foreground="#777", font=("Helvetica", 10), justify="left",
-                  ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 12))
+                  ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 16))
+
+        # ── Amazon library link ──
+        ttk.Separator(frame, orient="horizontal").grid(
+            row=3, column=0, columnspan=2, sticky="ew", pady=(0, 14))
+
+        ttk.Label(frame, text="Amazon", font=("Helvetica", 13, "bold")).grid(
+            row=4, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        ttk.Label(frame, text="Amazon domain:").grid(
+            row=5, column=0, sticky="w", pady=4)
+        self._domain_var = tk.StringVar(
+            value=self._settings.get("amazon_domain", "amazon.com"))
+        domain_entry = ttk.Entry(frame, textvariable=self._domain_var, width=20)
+        domain_entry.grid(row=5, column=1, padx=(8, 0), pady=4, sticky="w")
+
+        ttk.Label(frame, text="Kindle library link:").grid(
+            row=6, column=0, sticky="w", pady=4)
+        self._url_lbl = tk.Label(frame, text="", foreground="#2979FF",
+                                 cursor="hand2", font=("Helvetica", 10),
+                                 justify="left", wraplength=220)
+        self._url_lbl.grid(row=6, column=1, padx=(8, 0), pady=4, sticky="w")
+        self._url_lbl.bind("<Button-1>", lambda _e: self._open_library_url())
+        self._domain_var.trace_add("write", lambda *_: self._refresh_url())
+        self._refresh_url()
+
+        # ── Buttons ──
+        ttk.Separator(frame, orient="horizontal").grid(
+            row=7, column=0, columnspan=2, sticky="ew", pady=(14, 14))
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=4, column=0, columnspan=2, sticky="e")
-        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side="left", padx=(0, 8))
+        btn_frame.grid(row=8, column=0, columnspan=2, sticky="e")
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(
+            side="left", padx=(0, 8))
         ttk.Button(btn_frame, text="Save", command=self._save).pack(side="left")
+
+    def _refresh_url(self):
+        domain = self._domain_var.get().strip() or "amazon.com"
+        url = f"https://www.{domain}/hz/mycd/myx#/home/content/pdocs/dateDsc/"
+        self._url_lbl.config(text=url)
+
+    def _open_library_url(self):
+        domain = self._domain_var.get().strip() or "amazon.com"
+        url = f"https://www.{domain}/hz/mycd/myx#/home/content/pdocs/dateDsc/"
+        subprocess.run(["open", url])
 
     def _save(self):
         email = self._email_var.get().strip()
@@ -272,12 +374,64 @@ class SettingsDialog(tk.Toplevel):
                                  "Please enter your Kindle email address.", parent=self)
             return
         self._settings["kindle_email"] = email
-        kids = self._kids_var.get().strip()
-        if kids:
-            self._settings["kindle_kids_email"] = kids
-        else:
-            self._settings.pop("kindle_kids_email", None)
+        domain = self._domain_var.get().strip()
+        self._settings["amazon_domain"] = domain if domain else "amazon.com"
         save_settings(self._settings)
+        self.destroy()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Expired loans dialog
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ExpiredLoansDialog(tk.Toplevel):
+    """Blocks conversion until the user confirms expired loans are deleted."""
+
+    def __init__(self, parent, loans):
+        super().__init__(parent)
+        self.title("Expired Loans")
+        self.resizable(False, False)
+        self.grab_set()
+        self._loans   = loans
+        self.confirmed = False
+        self._build_ui()
+
+    def _build_ui(self):
+        frame = ttk.Frame(self, padding=20)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame,
+                  text="Please delete these expired loans from your Kindle library\n"
+                       "before borrowing a new book.",
+                  font=("Helvetica", 12), justify="left",
+                  ).pack(anchor="w", pady=(0, 12))
+
+        # List of expired books
+        box = tk.Frame(frame, bg="#F8F8F8", bd=1, relief="solid")
+        box.pack(fill="x", pady=(0, 12))
+        for loan in self._loans:
+            expiry = loan.get("expiry", "")[:10]  # just the date part
+            tk.Label(box, text=f"  {loan['title']}  —  expired {expiry}",
+                     bg="#F8F8F8", anchor="w", font=("Helvetica", 11),
+                     pady=5).pack(fill="x")
+
+        # Clickable Amazon link
+        url = _kindle_library_url()
+        link = tk.Label(frame, text=url, foreground="#2979FF",
+                        cursor="hand2", font=("Helvetica", 11))
+        link.pack(anchor="w", pady=(0, 16))
+        link.bind("<Button-1>", lambda _e: subprocess.run(["open", url]))
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(anchor="e")
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(
+            side="left", padx=(0, 8))
+        ttk.Button(btn_frame, text="I've deleted these",
+                   command=self._confirm).pack(side="left")
+
+    def _confirm(self):
+        confirm_loans_deleted(self._loans)
+        self.confirmed = True
         self.destroy()
 
 
@@ -316,11 +470,10 @@ class ConverterApp(_BaseApp):
         self.title("Kindle Converter")
         self.resizable(False, False)
         self._mde_before: set = set()
+        self._pending_expiry: tuple | None = None  # (expiry_str, title)
         self._busy = False
         self._build_ui()
-        # Prompt for email on first launch
-        settings = load_settings()
-        if not settings.get("kindle_email"):
+        if not load_settings().get("kindle_email"):
             self.after(300, self._open_settings)
 
     # ── UI ────────────────────────────────────────────────────────────────────
@@ -328,7 +481,7 @@ class ConverterApp(_BaseApp):
     def _build_ui(self):
         self.configure(bg="#F2F2F2")
 
-        # ── Top bar (settings gear) ──
+        # ── Top bar ──
         top = tk.Frame(self, bg="#F2F2F2")
         top.pack(fill="x", padx=16, pady=(12, 0))
         tk.Button(
@@ -359,23 +512,12 @@ class ConverterApp(_BaseApp):
         tk.Label(self._zone, text="click to browse", font=("Helvetica", 11),
                  fg="#AAAAAA", bg="#FFFFFF").place(relx=0.5, rely=0.88, anchor="center")
 
-        # Click anywhere in the zone → browse
         for w in (self._zone, self._zone_lbl):
             w.bind("<Button-1>", lambda _e: self._browse())
 
-        # Drag-and-drop
         if HAS_DND:
             self._zone.drop_target_register(DND_FILES)
             self._zone.dnd_bind("<<Drop>>", self._on_drop)
-
-        # ── Kids library toggle ──
-        self._kids_var = tk.BooleanVar(value=False)
-        self._kids_cb = ttk.Checkbutton(
-            self, text="Send to Kids library",
-            variable=self._kids_var,
-        )
-        self._kids_cb.pack(pady=(0, 4))
-        self._refresh_kids_toggle()
 
         # ── Status bar ──
         self._status_var = tk.StringVar(value="Ready")
@@ -384,21 +526,10 @@ class ConverterApp(_BaseApp):
             font=("Helvetica", 12), fg=_CLR["idle"],
             bg="#E5E5E5", anchor="center", pady=10,
         )
-        self._status_lbl.pack(fill="x", padx=0, pady=(0, 0))
-
-    def _refresh_kids_toggle(self):
-        """Show the kids toggle only when a kids email is configured."""
-        settings = load_settings()
-        if settings.get("kindle_kids_email"):
-            self._kids_cb.pack(pady=(0, 4))
-        else:
-            self._kids_cb.pack_forget()
-            self._kids_var.set(False)
+        self._status_lbl.pack(fill="x")
 
     def _open_settings(self):
-        dlg = SettingsDialog(self)
-        self.wait_window(dlg)
-        self._refresh_kids_toggle()
+        SettingsDialog(self)
 
     # ── Status helpers ────────────────────────────────────────────────────────
 
@@ -409,6 +540,17 @@ class ConverterApp(_BaseApp):
             shade = "#F8F8F8" if kind == "working" else "#FFFFFF"
             self._zone.config(bg=shade)
         self.after(0, _do)
+
+    # ── Expired-loan gate ─────────────────────────────────────────────────────
+
+    def _check_expired_loans(self):
+        """Show blocking dialog if any loans are expired. Returns True if clear to proceed."""
+        loans = expired_loans()
+        if not loans:
+            return True
+        dlg = ExpiredLoansDialog(self, loans)
+        self.wait_window(dlg)
+        return dlg.confirmed
 
     # ── File handling ─────────────────────────────────────────────────────────
 
@@ -437,16 +579,19 @@ class ConverterApp(_BaseApp):
     def _dispatch(self, files):
         if self._busy:
             return
-        settings = load_settings()
-        if not settings.get("kindle_email"):
+        if not load_settings().get("kindle_email"):
             self._set_status("Enter your Kindle email in Settings first", "error")
             self._open_settings()
+            return
+        if not self._check_expired_loans():
+            self._set_status("Please delete expired loans from Kindle first", "error")
             return
         acsm  = [f for f in files if f.lower().endswith(".acsm")]
         books = [f for f in files if f.lower().endswith((".epub", ".pdf"))]
         if acsm:
             self._open_acsm(acsm)
         elif books:
+            self._pending_expiry = None
             self._start_conversion(books)
 
     # ── ACSM → ADE → watch ───────────────────────────────────────────────────
@@ -454,7 +599,15 @@ class ConverterApp(_BaseApp):
     def _open_acsm(self, acsm_files):
         import time
         self._busy = True
-        self._mde_before = self._scan_mde()
+        # Parse loan expiry from ACSM before handing it to ADE
+        self._pending_expiry = None
+        for path in acsm_files:
+            expiry_str, is_loan = _parse_acsm(path)
+            if is_loan and expiry_str:
+                title = os.path.splitext(os.path.basename(path))[0]
+                self._pending_expiry = (expiry_str, title)
+                break
+        self._mde_before  = self._scan_mde()
         self._watch_start = time.time()
         for f in acsm_files:
             subprocess.run(["open", "-jg", f], capture_output=True)
@@ -481,7 +634,6 @@ class ConverterApp(_BaseApp):
             if new:
                 self._start_conversion(new)
                 return
-            # Book already existed — ADE updates its mtime when it opens it
             touched = sorted(
                 f for f in (current & self._mde_before)
                 if os.path.getmtime(f) >= self._watch_start
@@ -500,11 +652,12 @@ class ConverterApp(_BaseApp):
                          args=(files,), daemon=True).start()
 
     def _convert_worker(self, files):
-        # Check ADE key
         activation = os.path.expanduser(
             "~/Library/Application Support/Adobe/Digital Editions/activation.dat")
         if not os.path.exists(activation):
-            self._set_status("Adobe Digital Editions not authorized — open ADE → Help → Authorize Computer", "error")
+            self._set_status(
+                "Adobe Digital Editions not authorized — open ADE → Help → Authorize Computer",
+                "error")
             self._busy = False
             return
 
@@ -538,19 +691,16 @@ class ConverterApp(_BaseApp):
                 return
             if result == 0:
                 converted.append(outpath)
-            elif result != 1:  # 1 = already DRM-free — treat as ok
+            elif result != 1:
                 self._set_status("Decryption failed — wrong ADE account?", "error")
                 self._busy = False
                 return
 
         if not converted:
-            converted = files  # all were already DRM-free
-
-        settings = load_settings()
-        use_kids  = self._kids_var.get() and settings.get("kindle_kids_email")
-        target    = settings["kindle_kids_email"] if use_kids else settings["kindle_email"]
+            converted = files
 
         self._set_status("Sending to Kindle…", "working")
+        target = load_settings()["kindle_email"]
         all_sent = True
         for fpath in converted:
             fname  = os.path.basename(fpath)
@@ -573,9 +723,20 @@ end tell
                 all_sent = False
 
         if all_sent:
-            n = len(converted)
-            self._set_status(
-                f"✓  {'Book' if n == 1 else f'{n} books'} sent to Kindle!", "ok")
+            # Record loan if this came from a tracked ACSM
+            if self._pending_expiry:
+                expiry_str, title = self._pending_expiry
+                add_loan(title, expiry_str, converted[0] if converted else "")
+                self._pending_expiry = None
+                expiry_date = expiry_str[:10]
+                n = len(converted)
+                self._set_status(
+                    f"✓  {'Book' if n == 1 else f'{n} books'} sent — loan expires {expiry_date}",
+                    "ok")
+            else:
+                n = len(converted)
+                self._set_status(
+                    f"✓  {'Book' if n == 1 else f'{n} books'} sent to Kindle!", "ok")
         else:
             self._set_status(
                 "Converted but email failed — open Mail.app and add an account", "error")
