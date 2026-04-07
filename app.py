@@ -49,25 +49,6 @@ def save_settings(data):
     with open(SETTINGS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# ── SMTP password (system keychain) ───────────────────────────────────────────
-_KEYRING_SERVICE = "KindleConverter"
-
-def _load_smtp_password():
-    try:
-        import keyring
-        return keyring.get_password(_KEYRING_SERVICE, "smtp_password") or ""
-    except Exception:
-        return load_settings().get("_smtp_password_fallback", "")
-
-def _save_smtp_password(password):
-    try:
-        import keyring
-        keyring.set_password(_KEYRING_SERVICE, "smtp_password", password)
-    except Exception:
-        # Fallback: store in settings (less secure, noted in README)
-        s = load_settings()
-        s["_smtp_password_fallback"] = password
-        save_settings(s)
 
 # ── Loan tracking ─────────────────────────────────────────────────────────────
 
@@ -182,65 +163,104 @@ def _open_url(url):
 # ── Email sending (platform-aware) ───────────────────────────────────────────
 
 def send_file_to_kindle(fpath, target_email):
-    """Send fpath to target_email. Returns True on success."""
+    """Open the default email client with the file attached and Kindle email pre-filled."""
     if IS_MAC:
         return _send_via_mail_app(fpath, target_email)
+    elif IS_WIN:
+        return _send_via_mapi(fpath, target_email)
     else:
-        return _send_via_smtp(fpath, target_email)
+        return _send_via_mail_app(fpath, target_email)  # Linux: try AppleScript equivalent
 
 def _send_via_mail_app(fpath, target_email):
     fname  = os.path.basename(fpath)
     script = f'''
 tell application "Mail"
     set msg to make new outgoing message with properties {{¬
-        subject:"{fname}", content:"", visible:false}}
+        subject:"{fname}", content:"", visible:true}}
     tell msg
         make new to recipient at end of to recipients ¬
             with properties {{address:"{target_email}"}}
         make new attachment with properties ¬
             {{file name:POSIX file "{fpath}"}} at after last paragraph
     end tell
-    send msg
+    activate
 end tell
 '''
     r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     return r.returncode == 0
 
-def _send_via_smtp(fpath, target_email):
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.base import MIMEBase
-    from email import encoders
+def _send_via_mapi(fpath, target_email):
+    """Open the Windows default email client via Simple MAPI with attachment pre-filled.
+    Works with Outlook, Thunderbird, Windows Mail, or any MAPI-compliant client.
+    No credentials required — user just clicks Send.
+    """
+    import ctypes
 
-    s         = load_settings()
-    smtp_host = s.get("smtp_server", "")
-    smtp_port = int(s.get("smtp_port", 587))
-    smtp_user = s.get("smtp_user", "")
-    smtp_pass = _load_smtp_password()
+    MAPI_DIALOG    = 0x8
+    MAPI_LOGON_UI  = 0x1
+    MAPI_TO        = 1
 
-    if not all([smtp_host, smtp_user, smtp_pass]):
-        return False
+    class MapiRecipDesc(ctypes.Structure):
+        _fields_ = [
+            ("ulReserved",   ctypes.c_ulong),
+            ("ulRecipClass", ctypes.c_ulong),
+            ("lpszName",     ctypes.c_char_p),
+            ("lpszAddress",  ctypes.c_char_p),
+            ("ulEIDSize",    ctypes.c_ulong),
+            ("lpEntryID",    ctypes.c_void_p),
+        ]
 
-    msg = MIMEMultipart()
-    msg["From"]    = smtp_user
-    msg["To"]      = target_email
-    msg["Subject"] = os.path.basename(fpath)
+    class MapiFileDesc(ctypes.Structure):
+        _fields_ = [
+            ("ulReserved",   ctypes.c_ulong),
+            ("flFlags",      ctypes.c_ulong),
+            ("nPosition",    ctypes.c_ulong),
+            ("lpszPathName", ctypes.c_char_p),
+            ("lpszFileName", ctypes.c_char_p),
+            ("lpFileType",   ctypes.c_void_p),
+        ]
 
-    with open(fpath, "rb") as f:
-        part = MIMEBase("application", "octet-stream")
-        part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition",
-                        f'attachment; filename="{os.path.basename(fpath)}"')
-        msg.attach(part)
+    class MapiMessage(ctypes.Structure):
+        _fields_ = [
+            ("ulReserved",        ctypes.c_ulong),
+            ("lpszSubject",       ctypes.c_char_p),
+            ("lpszNoteText",      ctypes.c_char_p),
+            ("lpszMessageType",   ctypes.c_char_p),
+            ("lpszDateReceived",  ctypes.c_char_p),
+            ("lpszConversationID",ctypes.c_char_p),
+            ("flFlags",           ctypes.c_ulong),
+            ("lpOriginator",      ctypes.c_void_p),
+            ("nRecipCount",       ctypes.c_ulong),
+            ("lpRecips",          ctypes.POINTER(MapiRecipDesc)),
+            ("nFileCount",        ctypes.c_ulong),
+            ("lpFiles",           ctypes.POINTER(MapiFileDesc)),
+        ]
+
+    recip = MapiRecipDesc(
+        ulRecipClass = MAPI_TO,
+        lpszName     = target_email.encode(),
+        lpszAddress  = f"SMTP:{target_email}".encode(),
+    )
+
+    attachment = MapiFileDesc(
+        lpszPathName = fpath.encode(),
+        lpszFileName = os.path.basename(fpath).encode(),
+        nPosition    = 0xFFFFFFFF,  # no inline position
+    )
+
+    msg = MapiMessage(
+        lpszSubject = os.path.basename(fpath).encode(),
+        nRecipCount = 1,
+        lpRecips    = ctypes.pointer(recip),
+        nFileCount  = 1,
+        lpFiles     = ctypes.pointer(attachment),
+    )
 
     try:
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-        return True
+        mapi   = ctypes.windll.MAPI32
+        result = mapi.MAPISendMail(0, 0, ctypes.byref(msg),
+                                   MAPI_DIALOG | MAPI_LOGON_UI, 0)
+        return result == 0
     except Exception:
         return False
 
@@ -489,40 +509,6 @@ class SettingsDialog(tk.Toplevel):
         self._domain_var.trace_add("write", lambda *_: self._refresh_url())
         self._refresh_url()
 
-        # ── SMTP (Windows only) ──
-        if IS_WIN:
-            ttk.Separator(frame, orient="horizontal").grid(
-                row=7, column=0, columnspan=2, sticky="ew", pady=(14, 14))
-
-            ttk.Label(frame, text="Email (SMTP)", font=("Helvetica", 13, "bold")).grid(
-                row=8, column=0, columnspan=2, sticky="w", pady=(0, 10))
-
-            fields = [
-                ("SMTP server:",   "smtp_server", "smtp.gmail.com", False),
-                ("Port:",          "smtp_port",   "587",            False),
-                ("Your email:",    "smtp_user",   "",               False),
-                ("Password:",      None,          "",               True),
-            ]
-            self._smtp_vars = {}
-            for i, (label, key, placeholder, is_pass) in enumerate(fields):
-                ttk.Label(frame, text=label).grid(
-                    row=9 + i, column=0, sticky="w", pady=3)
-                if key:
-                    var = tk.StringVar(value=self._settings.get(key, placeholder))
-                    self._smtp_vars[key] = var
-                else:
-                    var = tk.StringVar(value=_load_smtp_password())
-                    self._smtp_vars["_password"] = var
-                show = "*" if is_pass else ""
-                ttk.Entry(frame, textvariable=var, width=28, show=show).grid(
-                    row=9 + i, column=1, padx=(8, 0), pady=3)
-
-            ttk.Label(frame,
-                      text="Use an App Password for Gmail/Outlook.\n"
-                           "Your password is stored in Windows Credential Manager.",
-                      foreground="#777", font=("Helvetica", 10), justify="left",
-                      ).grid(row=13, column=0, columnspan=2, sticky="w", pady=(6, 0))
-
         # ── Buttons ──
         ttk.Separator(frame, orient="horizontal").grid(
             row=20, column=0, columnspan=2, sticky="ew", pady=(14, 14))
@@ -546,11 +532,6 @@ class SettingsDialog(tk.Toplevel):
         self._settings["kindle_email"] = email
         domain = self._domain_var.get().strip()
         self._settings["amazon_domain"] = domain or "amazon.com"
-
-        if IS_WIN and hasattr(self, "_smtp_vars"):
-            for key in ("smtp_server", "smtp_port", "smtp_user"):
-                self._settings[key] = self._smtp_vars[key].get().strip()
-            _save_smtp_password(self._smtp_vars["_password"].get())
 
         save_settings(self._settings)
         self.destroy()
@@ -867,7 +848,7 @@ class ConverterApp(_BaseApp):
         else:
             if IS_WIN:
                 self._set_status(
-                    "Email failed — check your SMTP settings", "error")
+                    "Could not open email client — is a mail app installed?", "error")
             else:
                 self._set_status(
                     "Converted but email failed — open Mail.app and add an account",

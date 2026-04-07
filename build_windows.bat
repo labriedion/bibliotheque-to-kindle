@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo Installing build dependencies...
-pip install pyinstaller pillow tkinterdnd2 pycryptodome lxml keyring pywin32
+pip install pyinstaller pillow tkinterdnd2 pycryptodome lxml
 
 echo Converting icon to .ico...
 python -c "from PIL import Image; Image.open('icon.png').save('icon.ico')"
