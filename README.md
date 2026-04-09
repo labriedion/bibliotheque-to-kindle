@@ -1,6 +1,6 @@
 # Bibliothèque to Kindle
 
-A simple app that removes Adobe DRM from library ebooks (EPUB and PDF) and sends them to your Kindle. Works on macOS and Windows.
+A simple macOS app that removes Adobe DRM from library ebooks (EPUB and PDF) and sends them to your Kindle.
 
 <img width="449" height="339" alt="image" src="https://github.com/user-attachments/assets/6ac04d7b-ecb1-48aa-9994-fdf3af442eab" />
 
@@ -16,7 +16,7 @@ If a borrowed book's loan has expired, the app will ask you to confirm you've de
 ## Installation
 
 **[Download the latest release](https://github.com/labriedion/bibliotheque-to-kindle/releases/latest)**
-— pick `BibliothequeToKindle.dmg` for macOS or `BibliothequeToKindle.exe` for Windows.
+— download `BibliothequeToKindle-mac.dmg` and drag the app to your Applications folder.
 
 On first launch, click the ⚙ icon and enter your Kindle email address. Find it at:
 **Amazon → Manage Your Content and Devices → Preferences → Personal Document Settings**
@@ -33,9 +33,7 @@ On first launch, click the ⚙ icon and enter your Kindle email address. Find it
 ## Requirements
 
 - [Adobe Digital Editions](https://www.adobe.com/solutions/ebook/digital-editions/download.html) — installed and authorized with your library account
-- An email client with at least one configured account:
-  - **macOS**: Mail.app
-  - **Windows**: Outlook, Thunderbird, Windows Mail, or any MAPI-compatible client
+- Mail.app with at least one configured account
 
 ## Legal notice
 
@@ -53,7 +51,7 @@ GPL v3 — see [LICENSE](LICENSE).
 
 # Bibliothèque to Kindle (Français)
 
-Une application simple qui supprime le DRM Adobe des livres numériques empruntés à la bibliothèque (EPUB et PDF) et les envoie à votre Kindle. Fonctionne sur macOS et Windows.
+Une application macOS simple qui supprime le DRM Adobe des livres numériques empruntés à la bibliothèque (EPUB et PDF) et les envoie à votre Kindle.
 
 ## Comment ça marche
 
@@ -67,7 +65,7 @@ Si le prêt d'un livre a expiré, l'application vous demandera de confirmer que 
 ## Installation
 
 **[Télécharger la dernière version](https://github.com/labriedion/bibliotheque-to-kindle/releases/latest)**
-— choisissez `BibliothequeToKindle.dmg` pour macOS ou `BibliothequeToKindle.exe` pour Windows.
+— téléchargez `BibliothequeToKindle-mac.dmg` et glissez l'application dans votre dossier Applications.
 
 Au premier lancement, cliquez sur l'icône ⚙ et entrez votre adresse e-mail Kindle. Trouvez-la sur :
 **Amazon → Gérer votre contenu et vos appareils → Préférences → Paramètres des documents personnels**
@@ -84,9 +82,7 @@ Au premier lancement, cliquez sur l'icône ⚙ et entrez votre adresse e-mail Ki
 ## Prérequis
 
 - [Adobe Digital Editions](https://www.adobe.com/solutions/ebook/digital-editions/download.html) — installé et autorisé avec votre compte de bibliothèque
-- Un client de messagerie avec au moins un compte configuré :
-  - **macOS** : Mail.app
-  - **Windows** : Outlook, Thunderbird, Windows Mail ou tout client compatible MAPI
+- Mail.app avec au moins un compte configuré
 
 ## Avis légal
 
