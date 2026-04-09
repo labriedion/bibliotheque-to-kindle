@@ -1,6 +1,8 @@
 # Bibliothèque to Kindle
 
 A simple app that removes Adobe DRM from library ebooks (EPUB and PDF) and sends them to your Kindle. Works on macOS and Windows.
+<img width="449" height="339" alt="image" src="https://github.com/user-attachments/assets/6ac04d7b-ecb1-48aa-9994-fdf3af442eab" />
+
 
 ## How it works
 
