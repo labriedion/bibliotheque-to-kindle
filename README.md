@@ -39,7 +39,7 @@ On first launch, click the ⚙ icon and enter your Kindle email address. Find it
 
 This tool is intended for removing DRM from ebooks you have legitimately borrowed or purchased, for **personal use only**. Circumventing DRM may be restricted in your jurisdiction. Use responsibly.
 
-**Please respect borrowing periods.** When a library loan expires, delete the book from your Kindle and your device — just as you would return a physical book. This tool should not be used to create permanent copies of borrowed books or to distribute them in any way. It exists solely to let you read books you have legitimately borrowed on your own Kindle, for the duration of the loan.
+**Please respect borrowing periods.** When a library loan expires, delete the book from your Kindle and your device, just as you would return a physical book. This tool should not be used to create permanent copies of borrowed books or to distribute them in any way. It exists solely to let you read books you have legitimately borrowed on your own Kindle, for the duration of the loan **only**.
 
 This project includes code from [DeDRM_tools](https://github.com/noDRM/DeDRM_tools) by noDRM.
 
@@ -90,7 +90,7 @@ Au premier lancement, cliquez sur l'icône ⚙ et entrez votre adresse e-mail Ki
 
 Cet outil est destiné à supprimer le DRM des livres numériques que vous avez légitimement empruntés ou achetés, pour **usage personnel uniquement**. Le contournement du DRM peut être restreint dans votre juridiction. Utilisez de manière responsable.
 
-**Veuillez respecter les périodes d'emprunt.** Lorsqu'un prêt de bibliothèque expire, supprimez le livre de votre Kindle et de votre appareil — tout comme vous retourneriez un livre physique. Cet outil ne doit pas être utilisé pour créer des copies permanentes de livres empruntés ni pour les distribuer de quelque façon que ce soit. Il existe uniquement pour vous permettre de lire sur votre propre Kindle des livres que vous avez légitimement empruntés, pendant la durée du prêt.
+**Veuillez respecter les périodes d'emprunt.** Lorsqu'un prêt de bibliothèque expire, supprimez le livre de votre Kindle et de votre appareil, tout comme vous retourneriez un livre physique. Cet outil ne doit pas être utilisé pour créer des copies permanentes de livres empruntés ni pour les distribuer de quelque façon que ce soit. Il existe uniquement pour vous permettre de lire sur votre propre Kindle des livres que vous avez légitimement empruntés, et ce, pendant la durée du prêt **seulement**.
 
 Ce projet inclut du code de [DeDRM_tools](https://github.com/noDRM/DeDRM_tools) par noDRM.
 
