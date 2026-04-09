@@ -21,4 +21,14 @@ src/icon.iconset/
 # macOS
 .DS_Store
 *.log
+
+# Legacy / generated root-level files
 dist/
+icon.png
+icon.icns
+icon.ico
+icon.iconset/
+KindleConverter.app/
+build_app.sh
+setup.sh
+run.sh
