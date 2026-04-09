@@ -68,7 +68,9 @@ python3 app.py
 
 ## Legal notice
 
-This tool is intended for removing DRM from ebooks you have legitimately borrowed or purchased, for personal use only. Circumventing DRM may be restricted in your jurisdiction. Use responsibly.
+This tool is intended for removing DRM from ebooks you have legitimately borrowed or purchased, for **personal use only**. Circumventing DRM may be restricted in your jurisdiction. Use responsibly.
+
+**Please respect borrowing periods.** When a library loan expires, delete the book from your Kindle and your device — just as you would return a physical book. This tool should not be used to create permanent copies of borrowed books or to distribute them in any way. It exists solely to let you read books you have legitimately borrowed on your own Kindle, for the duration of the loan.
 
 This project includes code from [DeDRM_tools](https://github.com/noDRM/DeDRM_tools) by noDRM.
 
@@ -148,7 +150,9 @@ python3 app.py
 
 ## Avis légal
 
-Cet outil est destiné à supprimer le DRM des livres numériques que vous avez légitimement empruntés ou achetés, pour usage personnel uniquement. Le contournement du DRM peut être restreint dans votre juridiction. Utilisez de manière responsable.
+Cet outil est destiné à supprimer le DRM des livres numériques que vous avez légitimement empruntés ou achetés, pour **usage personnel uniquement**. Le contournement du DRM peut être restreint dans votre juridiction. Utilisez de manière responsable.
+
+**Veuillez respecter les périodes d'emprunt.** Lorsqu'un prêt de bibliothèque expire, supprimez le livre de votre Kindle et de votre appareil — tout comme vous retourneriez un livre physique. Cet outil ne doit pas être utilisé pour créer des copies permanentes de livres empruntés ni pour les distribuer de quelque façon que ce soit. Il existe uniquement pour vous permettre de lire sur votre propre Kindle des livres que vous avez légitimement empruntés, pendant la durée du prêt.
 
 Ce projet inclut du code de [DeDRM_tools](https://github.com/noDRM/DeDRM_tools) par noDRM.
 
