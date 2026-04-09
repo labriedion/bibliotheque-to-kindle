@@ -1,13 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 from PyInstaller.utils.hooks import collect_all
 
+ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 datas_dnd, binaries_dnd, hiddenimports_dnd = collect_all("tkinterdnd2")
 
 a = Analysis(
-    ["src/app.py"],
-    pathex=["src"],
+    [os.path.join(ROOT, "src", "app.py")],
+    pathex=[os.path.join(ROOT, "src")],
     binaries=binaries_dnd,
-    datas=[("src/dedrm/", "dedrm")] + datas_dnd,
+    datas=[(os.path.join(ROOT, "src", "dedrm"), "dedrm")] + datas_dnd,
     hiddenimports=[
         "tkinter", "tkinter.ttk", "tkinter.filedialog",
         "tkinter.scrolledtext", "tkinter.messagebox",
@@ -31,5 +33,5 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon="src/icon.ico",
+    icon=os.path.join(ROOT, "src", "icon.ico"),
 )
