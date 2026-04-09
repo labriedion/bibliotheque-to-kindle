@@ -35,37 +35,6 @@ On first launch, click the ⚙ icon and enter your Kindle email address. Find it
   - **macOS**: Mail.app
   - **Windows**: Outlook, Thunderbird, Windows Mail, or any MAPI-compatible client
 
-## Building from source
-
-Requires Python 3.8+.
-
-**macOS:**
-```bash
-git clone https://github.com/labriedion/bibliotheque-to-kindle
-cd bibliotheque-to-kindle
-./build_mac.sh
-```
-Produces `dist/Bibliothèque to Kindle.app`. Optionally wrap it in a DMG:
-```bash
-hdiutil create -volname 'Bibliothèque to Kindle' -srcfolder "dist/Bibliothèque to Kindle.app" -ov -format UDZO dist/BibliothequeToKindle.dmg
-```
-
-**Windows:**
-```bat
-git clone https://github.com/labriedion/bibliotheque-to-kindle
-cd bibliotheque-to-kindle
-build_windows.bat
-```
-Produces `dist\BibliothequeToKindle.exe`.
-
-**Running from source (development):**
-```bash
-git clone https://github.com/labriedion/bibliotheque-to-kindle
-cd bibliotheque-to-kindle
-./setup.sh
-python3 app.py
-```
-
 ## Legal notice
 
 This tool is intended for removing DRM from ebooks you have legitimately borrowed or purchased, for **personal use only**. Circumventing DRM may be restricted in your jurisdiction. Use responsibly.
@@ -116,37 +85,6 @@ Au premier lancement, cliquez sur l'icône ⚙ et entrez votre adresse e-mail Ki
 - Un client de messagerie avec au moins un compte configuré :
   - **macOS** : Mail.app
   - **Windows** : Outlook, Thunderbird, Windows Mail ou tout client compatible MAPI
-
-## Compilation depuis les sources
-
-Requiert Python 3.8+.
-
-**macOS :**
-```bash
-git clone https://github.com/labriedion/bibliotheque-to-kindle
-cd bibliotheque-to-kindle
-./build_mac.sh
-```
-Produit `dist/Bibliothèque to Kindle.app`. Pour créer un DMG :
-```bash
-hdiutil create -volname 'Bibliothèque to Kindle' -srcfolder "dist/Bibliothèque to Kindle.app" -ov -format UDZO dist/BibliothequeToKindle.dmg
-```
-
-**Windows :**
-```bat
-git clone https://github.com/labriedion/bibliotheque-to-kindle
-cd bibliotheque-to-kindle
-build_windows.bat
-```
-Produit `dist\BibliothequeToKindle.exe`.
-
-**Exécution depuis les sources (développement) :**
-```bash
-git clone https://github.com/labriedion/bibliotheque-to-kindle
-cd bibliotheque-to-kindle
-./setup.sh
-python3 app.py
-```
 
 ## Avis légal
 
