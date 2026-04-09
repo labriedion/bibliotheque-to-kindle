@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 PYTHON="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3"
 
@@ -18,6 +18,6 @@ echo "▶ Building app bundle..."
 "$PYTHON" -m PyInstaller --clean --noconfirm \
     --distpath releases/mac \
     --workpath build/mac \
-    BibliothequeToKindle-mac.spec
+    build_scripts/BibliothequeToKindle-mac.spec
 
 echo "▶ Done!  App is at: releases/mac/Bibliothèque to Kindle.app"
