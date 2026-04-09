@@ -9,12 +9,15 @@ echo "▶ Installing build dependencies..."
 
 echo "▶ Generating icon..."
 "$PYTHON" -c "
-import sys; sys.path.insert(0, '.')
+import sys; sys.path.insert(0, 'src')
 from app import _generate_icon
 _generate_icon()
 "
 
 echo "▶ Building app bundle..."
-"$PYTHON" -m PyInstaller --clean --noconfirm BibliothequeToKindle-mac.spec
+"$PYTHON" -m PyInstaller --clean --noconfirm \
+    --distpath releases/mac \
+    --workpath build/mac \
+    BibliothequeToKindle-mac.spec
 
-echo "▶ Done!  App is at: dist/Bibliothèque to Kindle.app"
+echo "▶ Done!  App is at: releases/mac/Bibliothèque to Kindle.app"

@@ -4,10 +4,10 @@ from PyInstaller.utils.hooks import collect_all
 datas_dnd, binaries_dnd, hiddenimports_dnd = collect_all("tkinterdnd2")
 
 a = Analysis(
-    ["app.py"],
-    pathex=[],
+    ["src/app.py"],
+    pathex=["src"],
     binaries=binaries_dnd,
-    datas=[("dedrm/", "dedrm")] + datas_dnd,
+    datas=[("src/dedrm/", "dedrm")] + datas_dnd,
     hiddenimports=[
         "tkinter", "tkinter.ttk", "tkinter.filedialog",
         "tkinter.scrolledtext", "tkinter.messagebox",
@@ -45,7 +45,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="Bibliothèque to Kindle.app",
-    icon="icon.icns",
+    icon="src/icon.icns",
     bundle_identifier="com.bibliothequetokindleapp",
     info_plist={
         "CFBundleName":                  "Bibliothèque to Kindle",
