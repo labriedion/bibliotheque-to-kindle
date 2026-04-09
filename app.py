@@ -948,10 +948,10 @@ class ConverterApp(tk.Tk):
     @staticmethod
     def _out_path(inpath, out_dir):
         stem, ext = os.path.splitext(os.path.basename(inpath))
-        candidate = os.path.join(out_dir, f"{stem}_drm_free{ext}")
+        candidate = os.path.join(out_dir, f"{stem}{ext}")
         n = 2
         while os.path.exists(candidate):
-            candidate = os.path.join(out_dir, f"{stem}_drm_free_{n}{ext}")
+            candidate = os.path.join(out_dir, f"{stem}_{n}{ext}")
             n += 1
         return candidate
 
