@@ -381,9 +381,15 @@ class SettingsDialog(tk.Toplevel):
         self.title("Settings / Paramètres")
         self.resizable(False, False)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._settings = load_settings()
         self._build_ui()
         self._toggle_kindle_fields()
+
+    def _on_close(self):
+        self.grab_release()
+        self.destroy()
+        self.master.focus_force()
 
     def _build_ui(self):
         frame = ttk.Frame(self, padding=20)
@@ -468,7 +474,7 @@ class SettingsDialog(tk.Toplevel):
             row=20, column=0, columnspan=3, sticky="ew", pady=(14, 14))
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=21, column=0, columnspan=3, sticky="e")
-        ttk.Button(btn_frame, text="Cancel / Annuler", command=self.destroy).pack(
+        ttk.Button(btn_frame, text="Cancel / Annuler", command=self._on_close).pack(
             side="left", padx=(0, 8))
         ttk.Button(btn_frame, text="Save / Enregistrer", command=self._save).pack(side="left")
 
@@ -528,7 +534,7 @@ class SettingsDialog(tk.Toplevel):
         self._settings["send_to_kindle"] = send_to_kindle
         self._settings.pop("save_only", None)  # remove legacy key
         save_settings(self._settings)
-        self.destroy()
+        self._on_close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -536,16 +542,17 @@ class SettingsDialog(tk.Toplevel):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class ExpiredLoansDialog(tk.Toplevel):
-    """Blocks conversion until the user confirms they've deleted expired loans."""
+    """Shows expired loans and optionally fires a callback when the user responds."""
 
-    def __init__(self, parent, loans):
+    def __init__(self, parent, loans, on_done=None):
         super().__init__(parent)
         self.title("Expired Loans / Prêts expirés")
         self.resizable(False, False)
-        self.grab_set()
-        self._loans    = loans
-        self.confirmed = False
+        self._loans   = loans
+        self._on_done = on_done   # callable(confirmed: bool) or None
         self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+        self.focus_force()
 
     def _build_ui(self):
         frame = ttk.Frame(self, padding=20)
@@ -564,7 +571,7 @@ class ExpiredLoansDialog(tk.Toplevel):
         for loan in self._loans:
             expiry = loan.get("expiry", "")[:10]
             tk.Label(box, text=f"  {loan['title']}  —  expired / expiré le {expiry}",
-                     bg="#F8F8F8", anchor="w", font=("Helvetica", 11), pady=5,
+                     bg="#F8F8F8", fg="#1A1A1A", anchor="w", font=("Helvetica", 11), pady=5,
                      ).pack(fill="x")
 
         url  = _kindle_library_url()
@@ -575,15 +582,21 @@ class ExpiredLoansDialog(tk.Toplevel):
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(anchor="e")
-        ttk.Button(btn_frame, text="Cancel / Annuler", command=self.destroy).pack(
+        ttk.Button(btn_frame, text="Cancel / Annuler", command=self._cancel).pack(
             side="left", padx=(0, 8))
         ttk.Button(btn_frame, text="I've deleted them / Je les ai supprimés",
                    command=self._confirm).pack(side="left")
 
     def _confirm(self):
         confirm_loans_deleted(self._loans)
-        self.confirmed = True
         self.destroy()
+        if self._on_done:
+            self._on_done(True)
+
+    def _cancel(self):
+        self.destroy()
+        if self._on_done:
+            self._on_done(False)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -616,6 +629,28 @@ class ConverterApp(tk.Tk):
         self._last_output_dir  = None   # for the reveal button
         self._build_ui()
         self.focus_force()
+        if IS_MAC:
+            self._activate_on_mac()
+
+    def _activate_on_mac(self):
+        """Call NSApp.activateIgnoringOtherApps via the ObjC runtime so clicks
+        register immediately without needing a title-bar click first."""
+        try:
+            import ctypes, ctypes.util
+            objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+            objc.objc_getClass.restype   = ctypes.c_void_p
+            objc.sel_registerName.restype = ctypes.c_void_p
+            objc.objc_msgSend.restype    = ctypes.c_void_p
+            objc.objc_msgSend.argtypes   = [ctypes.c_void_p, ctypes.c_void_p,
+                                             ctypes.c_bool]
+            NSApp = ctypes.c_void_p(objc.objc_msgSend(
+                ctypes.c_void_p(objc.objc_getClass(b"NSApplication")),
+                ctypes.c_void_p(objc.sel_registerName(b"sharedApplication")),
+                False))
+            objc.objc_msgSend(NSApp, ctypes.c_void_p(
+                objc.sel_registerName(b"activateIgnoringOtherApps:")), True)
+        except Exception:
+            pass
         if not _dedrm_ok():
             messagebox.showerror(
                 "Setup required / Configuration requise",
@@ -629,6 +664,14 @@ class ConverterApp(tk.Tk):
             self._set_status(
                 "Click ⚙ to enter your Kindle address / "
                 "Cliquez ⚙ pour entrer votre adresse Kindle", "idle")
+        # Check for expired loans at startup so the dialog never interrupts a drop
+        self.after(400, self._check_expired_loans_on_boot)
+
+    def _check_expired_loans_on_boot(self):
+        loans = expired_loans()
+        if loans:
+            ExpiredLoansDialog(self, loans)
+        self.focus_force()
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -637,31 +680,42 @@ class ConverterApp(tk.Tk):
 
         top = tk.Frame(self, bg="#F2F2F2")
         top.pack(fill="x", padx=16, pady=(12, 0))
-        tk.Button(top, text="⚙", font=("Helvetica", 16), bd=0,
-                  bg="#F2F2F2", activebackground="#F2F2F2",
-                  command=self._open_settings).pack(side="right")
+        gear_btn = tk.Button(
+            top, text="⚙  Settings", font=("Helvetica", 13),
+            bg="#E0E0E0", activebackground="#C8C8C8",
+            fg="#333333", activeforeground="#000000",
+            relief="flat", bd=0, padx=12, pady=6,
+            cursor="pointinghand",
+            command=self._open_settings)
+        gear_btn.pack(side="right")
 
         self._zone = tk.Frame(self, bg="#FFFFFF", width=400, height=220,
-                              highlightthickness=2, highlightbackground="#CCCCCC")
+                              highlightthickness=2, highlightbackground="#CCCCCC",
+                              cursor="pointinghand")
         self._zone.pack(padx=24, pady=(4, 12))
         self._zone.pack_propagate(False)
 
-        tk.Label(self._zone, text="📚", font=("Helvetica", 52),
-                 bg="#FFFFFF").place(relx=0.5, rely=0.30, anchor="center")
+        self._zone_icon = tk.Label(self._zone, text="📚", font=("Helvetica", 52),
+                                   bg="#FFFFFF", cursor="pointinghand")
+        self._zone_icon.place(relx=0.5, rely=0.30, anchor="center")
 
         self._zone_lbl = tk.Label(
             self._zone,
             text="Drop your file here / Déposez votre fichier ici\n.acsm  ·  .epub  ·  .pdf",
-            font=("Helvetica", 13), fg="#444444", bg="#FFFFFF", justify="center")
+            font=("Helvetica", 13), fg="#444444", bg="#FFFFFF", justify="center",
+            cursor="pointinghand")
         self._zone_lbl.place(relx=0.5, rely=0.62, anchor="center")
 
-        tk.Label(self._zone,
+        self._zone_hint = tk.Label(self._zone,
                  text="click to browse / cliquez pour parcourir",
                  font=("Helvetica", 11), fg="#AAAAAA", bg="#FFFFFF",
-                 ).place(relx=0.5, rely=0.82, anchor="center")
+                 cursor="pointinghand")
+        self._zone_hint.place(relx=0.5, rely=0.82, anchor="center")
 
-        for w in (self._zone, self._zone_lbl):
+        for w in (self._zone, self._zone_lbl, self._zone_icon, self._zone_hint):
             w.bind("<Button-1>", lambda _e: self._browse())
+            w.bind("<Enter>", lambda _e: self._zone.config(highlightbackground="#888888"))
+            w.bind("<Leave>", lambda _e: self._zone.config(highlightbackground="#CCCCCC"))
 
         if HAS_DND:
             self._zone.drop_target_register(DND_FILES)
@@ -703,16 +757,6 @@ class ConverterApp(tk.Tk):
         if self._last_output_dir and os.path.isdir(self._last_output_dir):
             _reveal_in_finder(self._last_output_dir)
 
-    # ── Expired loan check ────────────────────────────────────────────────────
-
-    def _check_expired_loans(self):
-        loans = expired_loans()
-        if not loans:
-            return True
-        dlg = ExpiredLoansDialog(self, loans)
-        self.wait_window(dlg)
-        return dlg.confirmed
-
     # ── File handling ─────────────────────────────────────────────────────────
 
     def _on_drop(self, event):
@@ -721,7 +765,7 @@ class ConverterApp(tk.Tk):
         files = [f for f in self.tk.splitlist(event.data)
                  if f.lower().endswith((".acsm", ".epub", ".pdf"))]
         if files:
-            self._dispatch(files)
+            self.after(300, lambda: self._dispatch(files))
 
     def _browse(self):
         if self._busy:
@@ -748,12 +792,14 @@ class ConverterApp(tk.Tk):
                 "error")
             self._open_settings()
             return
-        if not self._check_expired_loans():
-            self._set_status(
-                "Delete expired loans from your Kindle first / "
-                "Supprimez d'abord les prêts expirés de votre Kindle",
-                "error")
+        loans = expired_loans()
+        if loans:
+            ExpiredLoansDialog(self, loans,
+                               on_done=lambda ok: self._do_dispatch(files) if ok else None)
             return
+        self._do_dispatch(files)
+
+    def _do_dispatch(self, files):
         acsm  = [f for f in files if f.lower().endswith(".acsm")]
         books = [f for f in files if f.lower().endswith((".epub", ".pdf"))]
         if acsm:
@@ -824,6 +870,18 @@ class ConverterApp(tk.Tk):
                          args=(files,), daemon=True).start()
 
     def _convert_worker(self, files):
+        try:
+            self._convert_worker_inner(files)
+        except Exception as exc:
+            self._log_error(exc)
+            self._set_status(
+                "Unexpected error — see error.log for details / "
+                "Erreur inattendue — voir error.log pour les détails",
+                "error")
+        finally:
+            self._busy = False
+
+    def _convert_worker_inner(self, files):
         if not _ensure_dedrm():
             self._set_status(
                 "DeDRM missing — run setup.sh and restart / "
@@ -876,6 +934,17 @@ class ConverterApp(tk.Tk):
                 result = (ineptpdf.decryptBook(key, inpath, outpath)
                           if inpath.lower().endswith(".pdf")
                           else ineptepub.decryptBook(key, inpath, outpath))
+            except ineptpdf.PDFEncryptionError as exc:
+                if "not encrypted" in str(exc).lower():
+                    result = 1  # treat as DRM-free
+                else:
+                    self._log_error(exc)
+                    self._set_status(
+                        f"Decryption error — see error.log for details / "
+                        f"Erreur de déchiffrement — voir error.log pour les détails",
+                        "error")
+                    self._busy = False
+                    return
             except Exception as exc:
                 self._log_error(exc)
                 self._set_status(
